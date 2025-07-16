@@ -8,6 +8,14 @@ const { handlePostback } = require('./handles/handlePostback');
 const app = express();
 app.use(express.json());
 
+// ✅ Serve static files from the 'public' folder
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ✅ Root endpoint to serve index.html
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 const VERIFY_TOKEN = 'pagebot';
 const PAGE_ACCESS_TOKEN = fs.readFileSync('token.txt', 'utf8').trim();
 const COMMANDS_PATH = path.join(__dirname, 'commands');
@@ -24,7 +32,7 @@ app.get('/webhook', (req, res) => {
     return res.sendStatus(403);
   }
 
-  res.sendStatus(400); // Bad request if neither mode nor token are provided
+  res.sendStatus(400);
 });
 
 // Webhook event handling
@@ -32,7 +40,6 @@ app.post('/webhook', (req, res) => {
   const { body } = req;
 
   if (body.object === 'page') {
-    // Ensure entry and messaging exist before iterating
     body.entry?.forEach(entry => {
       entry.messaging?.forEach(event => {
         if (event.message) {
@@ -49,7 +56,7 @@ app.post('/webhook', (req, res) => {
   res.sendStatus(404);
 });
 
-// Helper function for Axios requests
+// Helper function for Messenger API
 const sendMessengerProfileRequest = async (method, url, data = null) => {
   try {
     const response = await axios({
@@ -65,7 +72,7 @@ const sendMessengerProfileRequest = async (method, url, data = null) => {
   }
 };
 
-// Load all command files from the "commands" directory
+// Load all command files
 const loadCommands = () => {
   return fs.readdirSync(COMMANDS_PATH)
     .filter(file => file.endsWith('.js'))
@@ -76,17 +83,15 @@ const loadCommands = () => {
     .filter(Boolean);
 };
 
-// Load or reload Messenger Menu Commands dynamically
+// Load or reload Messenger Menu Commands
 const loadMenuCommands = async (isReload = false) => {
   const commands = loadCommands();
 
   if (isReload) {
-    // Delete existing commands if reloading
     await sendMessengerProfileRequest('delete', '/me/messenger_profile', { fields: ['commands'] });
     console.log('Menu commands deleted successfully.');
   }
 
-  // Load new or updated commands
   await sendMessengerProfileRequest('post', '/me/messenger_profile', {
     commands: [{ locale: 'default', commands }],
   });
@@ -94,7 +99,7 @@ const loadMenuCommands = async (isReload = false) => {
   console.log('Menu commands loaded successfully.');
 };
 
-// Watch for changes in the commands directory and reload the commands
+// Watch command folder for changes
 fs.watch(COMMANDS_PATH, (eventType, filename) => {
   if (['change', 'rename'].includes(eventType) && filename.endsWith('.js')) {
     loadMenuCommands(true).catch(error => {
@@ -103,14 +108,12 @@ fs.watch(COMMANDS_PATH, (eventType, filename) => {
   }
 });
 
-
 // Server initialization
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Server is running on port ${PORT}`);
-  // Load Messenger Menu Commands asynchronously after the server starts
   try {
-    await loadMenuCommands(); // Load commands without deleting (initial load)
+    await loadMenuCommands(); // Initial load
   } catch (error) {
     console.error('Error loading initial menu commands:', error);
   }
